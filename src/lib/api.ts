@@ -53,11 +53,21 @@ export async function searchFootprint(
     throw new Error("Please fill at least one box to start search.");
   }
 
+  // Attach auth token for future-proofing (backend currently allows open search).
+  let authHeader: Record<string, string> = {};
+  try {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (token) authHeader = { Authorization: `Bearer ${token}` };
+  } catch {
+    /* storage unavailable */
+  }
+
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/search`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeader },
       body: JSON.stringify(payload),
       signal,
     });

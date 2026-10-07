@@ -1,111 +1,60 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useState } from "react";
+import Link from "next/link";
 import {
-  BadgeCheck,
+  ArrowRight,
+  AtSign,
   Globe2,
-  ListFilter,
+  LayoutDashboard,
   Lock,
-  RotateCcw,
+  Mail,
+  MapPin,
+  Phone,
+  Search,
   ShieldCheck,
   Sparkles,
+  User,
   Zap,
 } from "lucide-react";
-import SearchForm from "@/components/SearchForm";
-import ResultCard from "@/components/ResultCard";
-import {
-  EmptyState,
-  ErrorState,
-  LoadingSkeleton,
-  LoadingState,
-  NoResults,
-} from "@/components/States";
-import {
-  searchFootprint,
-  validateForm,
-  type FootprintResponse,
-  type SearchFormValues,
-} from "@/lib/api";
+import { getToken } from "@/lib/auth";
 
-const EMPTY: SearchFormValues = {
-  name: "",
-  city: "",
-  phone: "",
-  username: "",
-  email: "",
-};
+const THINGS = [
+  {
+    icon: <User size={18} />,
+    title: "Search by name",
+    text: "Type a full name and see public profiles and mentions.",
+  },
+  {
+    icon: <Phone size={18} />,
+    title: "Search by phone",
+    text: "Enter a 10-digit mobile number to find public listings.",
+  },
+  {
+    icon: <AtSign size={18} />,
+    title: "Search by username",
+    text: "Find Instagram, X, Facebook and other public handles.",
+  },
+  {
+    icon: <Mail size={18} />,
+    title: "Search by email",
+    text: "Check where an email address appears on public sites.",
+  },
+  {
+    icon: <MapPin size={18} />,
+    title: "Add a city",
+    text: "Add a city to get better, more correct results.",
+  },
+  {
+    icon: <LayoutDashboard size={18} />,
+    title: "Results in simple cards",
+    text: "Results are grouped by website, with an Open link button.",
+  },
+];
 
-const EXAMPLE: SearchFormValues = {
-  name: "Venkateshwara Reddy",
-  city: "Hyderabad",
-  phone: "",
-  username: "venkateshwara_reddy_",
-  email: "",
-};
-
-type Status = "idle" | "loading" | "done" | "error";
-
-export default function Home() {
-  const [values, setValues] = useState<SearchFormValues>(EMPTY);
-  const [status, setStatus] = useState<Status>("idle");
-  const [data, setData] = useState<FootprintResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [platformFilter, setPlatformFilter] = useState<string>("All");
-  const abortRef = useRef<AbortController | null>(null);
-  const resultsRef = useRef<HTMLDivElement>(null);
-
-  const patch = (p: Partial<SearchFormValues>) => {
-    setValues((v) => ({ ...v, ...p }));
-    if (formError) setFormError(null);
-  };
-
-  const doSearch = async (override?: SearchFormValues) => {
-    const v = override ?? values;
-    if (override) setValues(override);
-
-    const msg = validateForm(v);
-    if (msg) {
-      setFormError(msg);
-      return;
-    }
-    setFormError(null);
-    setError(null);
-    setStatus("loading");
-    abortRef.current?.abort();
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-
-    // Scroll to results on mobile so user sees progress
-    requestAnimationFrame(() =>
-      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
-    );
-
-    try {
-      const res = await searchFootprint(v, ctrl.signal);
-      setData(res);
-      setStatus("done");
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") return;
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Something went wrong. Please try again."
-      );
-      setStatus("error");
-    }
-  };
-
-  const platforms = useMemo(() => {
-    if (!data) return ["All"];
-    const set = new Set(data.results.map((r) => r.platform));
-    return ["All", ...Array.from(set).sort()];
-  }, [data]);
-
-  const filtered =
-    platformFilter === "All" || !data
-      ? data?.results ?? []
-      : data.results.filter((r) => r.platform === platformFilter);
+export default function LandingPage() {
+  // Lazy init from localStorage — avoids a sync setState inside an effect.
+  const [loggedIn] = useState<boolean>(() => getToken() !== null);
 
   return (
     <div className="min-h-screen bg-[#f6f7fb]">
@@ -123,20 +72,40 @@ export default function Home() {
               Made for India 🇮🇳 • Free to use
             </p>
           </div>
-          <span className="hidden items-center gap-1 rounded-full bg-emerald-50 px-3 py-1.5 text-[11.5px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-200 sm:inline-flex">
-            <Lock size={12} /> No login needed
-          </span>
+          {loggedIn ? (
+            <Link
+              href="/dashboard"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-indigo-700"
+            >
+              <LayoutDashboard size={14} /> Dashboard
+            </Link>
+          ) : (
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                href="/login"
+                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-[12.5px] font-bold text-slate-600 transition hover:bg-slate-50"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/signup"
+                className="rounded-full bg-slate-900 px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-indigo-700"
+              >
+                Sign up
+              </Link>
+            </div>
+          )}
         </div>
       </header>
 
-      {/* ---------- Hero ---------- */}
       <div className="relative overflow-hidden">
         <div className="dot-grid pointer-events-none absolute inset-0" />
         <div className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[42rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-200/60 via-violet-200/50 to-amber-100/60 blur-3xl" />
         <main className="relative mx-auto max-w-2xl px-4 pb-14 pt-8 sm:pt-10">
+          {/* ---------- Hero ---------- */}
           <div className="text-center">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200/80 bg-white px-3.5 py-1.5 text-[12px] font-bold text-indigo-700 shadow-sm">
-              <Sparkles size={13} /> 100% public data • Safe & private
+              <Sparkles size={13} /> 100% public data • Safe &amp; private
             </span>
             <h1 className="mx-auto mt-4 max-w-md text-[30px] font-black leading-[1.15] tracking-tight text-slate-900 sm:text-[38px]">
               See what the internet knows{" "}
@@ -145,15 +114,40 @@ export default function Home() {
               </span>
             </h1>
             <p className="mx-auto mt-2.5 max-w-md text-[14.5px] leading-relaxed text-slate-600">
-              Type your name, phone number, or username below. We&apos;ll show
-              your public photos, profiles & mentions — in simple words.
+              Type your name, phone number, or username. We&apos;ll show your
+              public photos, profiles &amp; mentions — in simple words.
             </p>
+            <div className="mt-5 flex flex-col justify-center gap-2.5 sm:flex-row">
+              {loggedIn ? (
+                <Link
+                  href="/dashboard"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-indigo-600 to-indigo-700 px-6 py-3.5 text-[15.5px] font-bold text-white shadow-[0_12px_30px_-8px_rgba(79,70,229,0.6)] transition hover:from-indigo-500 hover:to-indigo-700"
+                >
+                  <LayoutDashboard size={18} /> Open my dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/signup"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-indigo-600 to-indigo-700 px-6 py-3.5 text-[15.5px] font-bold text-white shadow-[0_12px_30px_-8px_rgba(79,70,229,0.6)] transition hover:from-indigo-500 hover:to-indigo-700"
+                  >
+                    Get started — it&apos;s free <ArrowRight size={18} />
+                  </Link>
+                  <Link
+                    href="/login"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-6 py-3.5 text-[15.5px] font-bold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    I already have an account
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Trust row */}
-          <div className="mt-5 grid grid-cols-3 gap-2">
+          <div className="mt-6 grid grid-cols-3 gap-2">
             {[
-              { icon: <Lock size={15} />, t: "No login", s: "Just type & search" },
+              { icon: <Lock size={15} />, t: "Private", s: "We never save details" },
               { icon: <Globe2 size={15} />, t: "Public only", s: "No private data" },
               { icon: <Zap size={15} />, t: "Fast", s: "Results in seconds" },
             ].map((c) => (
@@ -170,120 +164,72 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Form */}
-          <div className="mt-5">
-            <SearchForm
-              values={values}
-              onChange={patch}
-              onSubmit={() => doSearch()}
-              onFillExample={() => doSearch(EXAMPLE)}
-              onClear={() => {
-                setValues(EMPTY);
-                setFormError(null);
-              }}
-              loading={status === "loading"}
-              formError={formError}
-            />
-          </div>
-
-          {/* Results */}
-          <div ref={resultsRef} className="mt-6 scroll-mt-20">
-            {status === "idle" && (
-              <EmptyState onExample={() => doSearch(EXAMPLE)} />
-            )}
-
-            {status === "loading" && (
-              <div className="space-y-3">
-                <LoadingState />
-                <LoadingSkeleton />
-              </div>
-            )}
-
-            {status === "error" && (
-              <ErrorState
-                message={error ?? "Please try again."}
-                onRetry={() => doSearch()}
-              />
-            )}
-
-            {status === "done" && data && (
-              <section aria-live="polite">
-                <div className="mb-3 flex items-center justify-between gap-2 rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white">
-                      <BadgeCheck size={19} />
-                    </span>
-                    <div>
-                      <p className="text-[15px] font-extrabold text-slate-900">
-                        {data.total_results} {data.total_results === 1 ? "result" : "results"} found
-                      </p>
-                      <p className="text-[12px] text-slate-500">
-                        {data.message || "Search completed"}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setData(null);
-                      setStatus("idle");
-                      setPlatformFilter("All");
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-[12.5px] font-bold text-slate-600 transition hover:bg-slate-50"
-                  >
-                    <RotateCcw size={13} /> New search
-                  </button>
-                </div>
-
-                {data.results.length === 0 ? (
-                  <NoResults />
-                ) : (
-                  <>
-                    {platforms.length > 2 && (
-                      <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
-                        <ListFilter size={15} className="shrink-0 text-slate-400" />
-                        {platforms.map((p) => (
-                          <button
-                            key={p}
-                            type="button"
-                            onClick={() => setPlatformFilter(p)}
-                            className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition ${
-                              platformFilter === p
-                                ? "bg-slate-900 text-white"
-                                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                            }`}
-                          >
-                            {p}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <p className="mb-2.5 text-[12.5px] font-medium text-slate-500">
-                      Showing {filtered.length} of {data.results.length} • Tap{" "}
-                      <span className="font-bold text-slate-700">Open link</span> to view
+          {/* ---------- Things you can do ---------- */}
+          <section className="mt-6 rounded-[28px] border border-white/60 bg-white p-5 shadow-[0_20px_60px_-20px_rgba(79,70,229,0.25)] sm:p-7">
+            <h2 className="flex items-center gap-2 text-[17px] font-bold text-slate-900">
+              <Search size={18} className="text-indigo-600" />
+              Things you can do here
+            </h2>
+            <p className="mt-1 text-[13.5px] text-slate-500">
+              One free account gives you all of these:
+            </p>
+            <ul className="mt-4 space-y-3">
+              {THINGS.map((item) => (
+                <li
+                  key={item.title}
+                  className="flex gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
+                    {item.icon}
+                  </span>
+                  <div>
+                    <p className="text-[14px] font-bold text-slate-800">
+                      {item.title}
                     </p>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {filtered.map((r, i) => (
-                        <ResultCard key={`${r.link}-${i}`} result={r} />
-                      ))}
-                    </div>
-                  </>
-                )}
-              </section>
+                    <p className="text-[13px] leading-snug text-slate-500">
+                      {item.text}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <Link
+              href={loggedIn ? "/dashboard" : "/signup"}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-indigo-600 to-indigo-700 px-6 py-4 text-[16px] font-bold text-white shadow-[0_12px_30px_-8px_rgba(79,70,229,0.6)] transition hover:from-indigo-500 hover:to-indigo-700"
+            >
+              {loggedIn ? (
+                <>
+                  <LayoutDashboard size={19} /> Go to dashboard
+                </>
+              ) : (
+                <>
+                  Try it now — free <ArrowRight size={19} />
+                </>
+              )}
+            </Link>
+            {!loggedIn && (
+              <p className="mt-3 text-center text-[13px] text-slate-500">
+                Already have an account?{" "}
+                <Link
+                  href="/login"
+                  className="font-bold text-indigo-600 hover:underline"
+                >
+                  Log in
+                </Link>
+              </p>
             )}
-          </div>
+          </section>
 
-          {/* How it works — plain words for non-tech users */}
-          <section className="mt-8 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+          {/* ---------- How it works ---------- */}
+          <section className="mt-6 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
             <h2 className="text-[16px] font-extrabold text-slate-900">
               How does this work? 🤔
             </h2>
             <ol className="mt-3 space-y-3">
               {[
-                ["1", "Type any detail", "Name, mobile number, username or email — even one is enough."],
-                ["2", "We check public websites", "Instagram, Facebook, LinkedIn, Google, business sites & more."],
-                ["3", "You see simple cards", "Each card shows where it was found + a button to open it."],
+                ["1", "Create a free account", "Sign up with a username, email and password."],
+                ["2", "Type any detail", "Name, mobile number, username or email — even one is enough."],
+                ["3", "See simple cards", "Each card shows where it was found + a button to open it."],
               ].map(([n, t, s]) => (
                 <li key={n} className="flex gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[13px] font-extrabold text-indigo-700">
