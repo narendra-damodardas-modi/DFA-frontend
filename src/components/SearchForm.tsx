@@ -11,6 +11,8 @@ interface Props {
   onClear: () => void;
   loading: boolean;
   formError: string | null;
+  includeSummary: boolean;
+  onToggleSummary: (v: boolean) => void;
 }
 
 function Field({
@@ -63,6 +65,8 @@ export default function SearchForm({
   onClear,
   loading,
   formError,
+  includeSummary,
+  onToggleSummary,
 }: Props) {
   return (
     <section
@@ -209,6 +213,26 @@ export default function SearchForm({
             {formError}
           </p>
         )}
+
+        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 px-4 py-3.5">
+          <input
+            type="checkbox"
+            checked={includeSummary}
+            disabled={loading}
+            onChange={(e) => onToggleSummary(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0 accent-indigo-600"
+          />
+          <span>
+            <span className="block text-[14px] font-bold text-slate-800">
+              ✨ Get simple AI summary
+            </span>
+            <span className="block text-[12.5px] leading-snug text-slate-500">
+              {includeSummary
+                ? "On — easy words + safety tips. Takes a few seconds longer."
+                : "Off — fast search, no summary. You can make one later."}
+            </span>
+          </span>
+        </label>
 
         <button
           type="submit"

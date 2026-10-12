@@ -19,7 +19,13 @@ export interface FootprintResponse {
   input: Record<string, string>;
   total_results: number;
   results: PlatformResult[];
+  agent_summary: string | null;
   message: string;
+}
+
+export interface SummarizeResponse {
+  success: boolean;
+  agent_summary: string | null;
 }
 
 const API_BASE =
@@ -43,25 +49,31 @@ export function buildSearchPayload(values: SearchFormValues) {
   return payload;
 }
 
+function getAuthHeader(): Record<string, string> {
+  try {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (token) return { Authorization: `Bearer ${token}` };
+  } catch {
+    /* storage unavailable */
+  }
+  return {};
+}
+
 export async function searchFootprint(
   values: SearchFormValues,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  includeSummary: boolean = true
 ): Promise<FootprintResponse> {
-  const payload = buildSearchPayload(values);
+  const payload: Record<string, string | boolean> = buildSearchPayload(values);
+  payload.include_summary = includeSummary;
 
-  if (Object.keys(payload).length === 0) {
+  if (Object.keys(payload).length <= 1) {
     throw new Error("Please fill at least one box to start search.");
   }
 
   // Attach auth token for future-proofing (backend currently allows open search).
-  let authHeader: Record<string, string> = {};
-  try {
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    if (token) authHeader = { Authorization: `Bearer ${token}` };
-  } catch {
-    /* storage unavailable */
-  }
+  const authHeader = getAuthHeader();
 
   let res: Response;
   try {
@@ -95,11 +107,59 @@ export async function searchFootprint(
   return {
     ...data,
     results: Array.isArray(data.results) ? data.results : [],
+    agent_summary:
+      typeof data.agent_summary === "string" ? data.agent_summary : null,
     total_results:
       typeof data.total_results === "number"
         ? data.total_results
         : data.results?.length ?? 0,
   };
+}
+
+/**
+ * Re-generate the AI summary without re-running the search.
+ * POST /summarize { input, results } → { success, agent_summary }
+ */
+export async function summarizeFootprint(
+  input: Record<string, string>,
+  results: PlatformResult[],
+  signal?: AbortSignal
+): Promise<string | null> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/summarize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ input, results }),
+      signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new Error(
+      "Could not connect to server. It may be waking up — please wait 30 seconds and try again."
+    );
+  }
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const data = await res.json();
+      detail = data?.detail || data?.message || "";
+    } catch {
+      /* ignore */
+    }
+    if (res.status === 502) {
+      throw new Error(
+        "Summary helper is resting right now. Please try again in a minute."
+      );
+    }
+    throw new Error(
+      detail || `Server error (${res.status}). Please try again in a minute.`
+    );
+  }
+
+  const data = (await res.json()) as SummarizeResponse;
+  return typeof data.agent_summary === "string" ? data.agent_summary : null;
 }
 
 export function validateForm(values: SearchFormValues): string | null {

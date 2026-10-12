@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import SearchForm from "@/components/SearchForm";
 import ResultCard from "@/components/ResultCard";
+import SummaryCard from "@/components/SummaryCard";
 import {
   EmptyState,
   ErrorState,
@@ -22,6 +23,7 @@ import {
 } from "@/components/States";
 import {
   searchFootprint,
+  summarizeFootprint,
   validateForm,
   type FootprintResponse,
   type SearchFormValues,
@@ -65,6 +67,10 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [platformFilter, setPlatformFilter] = useState<string>("All");
+  const [includeSummary, setIncludeSummary] = useState(true);
+  const [summarySkipped, setSummarySkipped] = useState(false);
+  const [summaryBusy, setSummaryBusy] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +122,7 @@ export default function DashboardPage() {
     }
     setFormError(null);
     setError(null);
+    setSummaryError(null);
     setStatus("loading");
     abortRef.current?.abort();
     const ctrl = new AbortController();
@@ -126,8 +133,9 @@ export default function DashboardPage() {
     );
 
     try {
-      const res = await searchFootprint(v, ctrl.signal);
+      const res = await searchFootprint(v, ctrl.signal, includeSummary);
       setData(res);
+      setSummarySkipped(!includeSummary);
       setPlatformFilter("All");
       setStatus("done");
     } catch (e) {
@@ -136,6 +144,26 @@ export default function DashboardPage() {
         e instanceof Error ? e.message : "Something went wrong. Please try again."
       );
       setStatus("error");
+    }
+  };
+
+  const regenerateSummary = async () => {
+    if (!data || summaryBusy) return;
+    setSummaryBusy(true);
+    setSummaryError(null);
+    try {
+      const summary = await summarizeFootprint(data.input, data.results);
+      setData((d) => (d ? { ...d, agent_summary: summary } : d));
+      setSummarySkipped(false);
+      if (summary === null) {
+        setSummaryError("Still no summary. Please try again in a minute.");
+      }
+    } catch (e) {
+      setSummaryError(
+        e instanceof Error ? e.message : "Could not make summary. Please try again."
+      );
+    } finally {
+      setSummaryBusy(false);
     }
   };
 
@@ -229,6 +257,8 @@ export default function DashboardPage() {
               }}
               loading={status === "loading"}
               formError={formError}
+              includeSummary={includeSummary}
+              onToggleSummary={setIncludeSummary}
             />
           </div>
 
@@ -275,6 +305,8 @@ export default function DashboardPage() {
                       setData(null);
                       setStatus("idle");
                       setPlatformFilter("All");
+                      setSummaryError(null);
+                      setSummarySkipped(false);
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-[12.5px] font-bold text-slate-600 transition hover:bg-slate-50"
@@ -282,6 +314,22 @@ export default function DashboardPage() {
                     <RotateCcw size={13} /> New search
                   </button>
                 </div>
+
+                {summaryError && (
+                  <p
+                    role="alert"
+                    className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] font-medium leading-snug text-amber-800"
+                  >
+                    {summaryError}
+                  </p>
+                )}
+
+                <SummaryCard
+                  summary={data.agent_summary ?? null}
+                  regenerating={summaryBusy}
+                  skipped={summarySkipped && !data.agent_summary}
+                  onRegenerate={regenerateSummary}
+                />
 
                 {data.results.length === 0 ? (
                   <NoResults />
