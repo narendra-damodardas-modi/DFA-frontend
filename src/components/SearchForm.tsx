@@ -70,7 +70,7 @@ export default function SearchForm({
 }: Props) {
   return (
     <section
-      aria-label="Search details"
+      aria-label="Deep Internet Analysis details"
       className="rounded-[28px] border border-white/60 bg-white p-5 shadow-[0_20px_60px_-20px_rgba(79,70,229,0.25)] sm:p-7"
     >
       <div className="mb-5 flex items-start justify-between gap-3">
@@ -224,12 +224,17 @@ export default function SearchForm({
           />
           <span>
             <span className="block text-[14px] font-bold text-slate-800">
-              ✨ Get simple AI summary
+              ✨ AI mode (+10 credits)
             </span>
             <span className="block text-[12.5px] leading-snug text-slate-500">
               {includeSummary
                 ? "On — easy words + safety tips. Takes a few seconds longer."
                 : "Off — fast search, no summary. You can make one later."}
+            </span>
+            <span className="mt-1 block text-[12.5px] font-bold text-indigo-700">
+              {includeSummary
+                ? "Cost: 30 credits (with AI)"
+                : "Cost: 20 credits"}
             </span>
           </span>
         </label>
@@ -242,7 +247,7 @@ export default function SearchForm({
           {loading ? (
             <>
               <Loader2 size={21} className="animate-spin" />
-              Searching… please wait
+              Running Deep Internet Analysis… please wait
             </>
           ) : (
             <>
@@ -250,7 +255,7 @@ export default function SearchForm({
                 size={20}
                 className="transition-transform group-hover:scale-110"
               />
-              Search Digital Footprint
+              Run Deep Internet Analysis
             </>
           )}
         </button>

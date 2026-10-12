@@ -84,7 +84,7 @@ export default function SignupPage() {
               Create your account ✨
             </h1>
             <p className="mt-1 text-[14px] text-slate-500">
-              Free forever. Takes less than a minute.
+              Get 20 free credits. Takes less than a minute.
             </p>
           </div>
 

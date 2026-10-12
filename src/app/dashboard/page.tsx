@@ -7,13 +7,17 @@ import {
   Globe2,
   ListFilter,
   Loader2,
+  Lock,
   LogOut,
   RotateCcw,
   ShieldCheck,
+  Wallet,
 } from "lucide-react";
 import SearchForm from "@/components/SearchForm";
 import ResultCard from "@/components/ResultCard";
 import SummaryCard from "@/components/SummaryCard";
+import PaywallBanner from "@/components/PaywallBanner";
+import BuyCreditsModal from "@/components/BuyCreditsModal";
 import {
   EmptyState,
   ErrorState,
@@ -22,10 +26,14 @@ import {
   NoResults,
 } from "@/components/States";
 import {
+  PaywallError,
+  UnauthorizedError,
+  reportCost,
   searchFootprint,
   summarizeFootprint,
   validateForm,
   type FootprintResponse,
+  type LockedReport,
   type SearchFormValues,
 } from "@/lib/api";
 import {
@@ -35,6 +43,7 @@ import {
   getUser,
   type AuthUser,
 } from "@/lib/auth";
+import { getCreditsBalance } from "@/lib/payments";
 
 const EMPTY: SearchFormValues = {
   name: "",
@@ -60,10 +69,14 @@ export default function DashboardPage() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
   // Lazy init from localStorage so refresh shows cached user without a sync setState in effect.
   const [user, setUser] = useState<AuthUser | null>(() => getUser());
+  const [credits, setCredits] = useState<number | null>(
+    () => getUser()?.credits ?? null
+  );
 
   const [values, setValues] = useState<SearchFormValues>(EMPTY);
   const [status, setStatus] = useState<Status>("idle");
   const [data, setData] = useState<FootprintResponse | null>(null);
+  const [locked, setLocked] = useState<LockedReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [platformFilter, setPlatformFilter] = useState<string>("All");
@@ -71,8 +84,18 @@ export default function DashboardPage() {
   const [summarySkipped, setSummarySkipped] = useState(false);
   const [summaryBusy, setSummaryBusy] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [buyOpen, setBuyOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  const refreshBalance = async () => {
+    try {
+      const b = await getCreditsBalance();
+      setCredits(b);
+    } catch {
+      /* keep old balance on failure */
+    }
+  };
 
   // Protected guard: token required, validated via GET /auth/me.
   // Refresh persists login via localStorage + this check.
@@ -86,6 +109,7 @@ export default function DashboardPage() {
     fetchMe(token)
       .then((me) => {
         setUser(me);
+        if (typeof me.credits === "number") setCredits(me.credits);
         setAuthStatus("ok");
         // Keep cached copy fresh (persist login across refresh).
         try {
@@ -93,11 +117,14 @@ export default function DashboardPage() {
         } catch {
           /* ignore */
         }
+        // Fetch the latest wallet balance (auth required).
+        refreshBalance();
       })
       .catch(() => {
         clearAuth();
         router.replace("/login");
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const logout = () => {
@@ -123,6 +150,7 @@ export default function DashboardPage() {
     setFormError(null);
     setError(null);
     setSummaryError(null);
+    setLocked(null);
     setStatus("loading");
     abortRef.current?.abort();
     const ctrl = new AbortController();
@@ -135,11 +163,31 @@ export default function DashboardPage() {
     try {
       const res = await searchFootprint(v, ctrl.signal, includeSummary);
       setData(res);
+      setLocked(null);
       setSummarySkipped(!includeSummary);
       setPlatformFilter("All");
+      // Update wallet from the success payload; fall back to a refresh.
+      if (typeof res.current_credits === "number") {
+        setCredits(res.current_credits);
+      } else {
+        void refreshBalance();
+      }
       setStatus("done");
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
+      if (e instanceof UnauthorizedError) {
+        clearAuth();
+        router.replace("/login");
+        return;
+      }
+      if (e instanceof PaywallError) {
+        setData(null);
+        setLocked(e.locked);
+        setCredits(e.locked.current_credits);
+        setPlatformFilter("All");
+        setStatus("done");
+        return;
+      }
       setError(
         e instanceof Error ? e.message : "Something went wrong. Please try again."
       );
@@ -158,7 +206,13 @@ export default function DashboardPage() {
       if (summary === null) {
         setSummaryError("Still no summary. Please try again in a minute.");
       }
+      void refreshBalance();
     } catch (e) {
+      if (e instanceof UnauthorizedError) {
+        clearAuth();
+        router.replace("/login");
+        return;
+      }
       setSummaryError(
         e instanceof Error ? e.message : "Could not make summary. Please try again."
       );
@@ -167,18 +221,19 @@ export default function DashboardPage() {
     }
   };
 
+  const report = data ?? locked;
   const platforms = useMemo(() => {
-    if (!data) return ["All"];
-    const set = new Set(data.results.map((r) => r.platform));
+    if (!report) return ["All"];
+    const set = new Set(report.results.map((r) => r.platform));
     return ["All", ...Array.from(set).sort()];
-  }, [data]);
+  }, [report]);
 
   // Group results by platform for the "grouped by platform" view.
   const grouped = useMemo(() => {
     const list =
-      platformFilter === "All" || !data
-        ? data?.results ?? []
-        : data.results.filter((r) => r.platform === platformFilter);
+      platformFilter === "All" || !report
+        ? report?.results ?? []
+        : report.results.filter((r) => r.platform === platformFilter);
     const map = new Map<string, typeof list>();
     for (const r of list) {
       const arr = map.get(r.platform) ?? [];
@@ -186,7 +241,7 @@ export default function DashboardPage() {
       map.set(r.platform, arr);
     }
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [data, platformFilter]);
+  }, [report, platformFilter]);
 
   const visibleCount = grouped.reduce((n, [, arr]) => n + arr.length, 0);
 
@@ -217,6 +272,16 @@ export default function DashboardPage() {
               Hello, {user?.username ?? "friend"} 👋
             </p>
           </div>
+          {/* Wallet balance */}
+          <button
+            type="button"
+            onClick={() => setBuyOpen(true)}
+            title="Buy credits"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-[12.5px] font-extrabold text-indigo-700 transition hover:bg-indigo-100"
+          >
+            <Wallet size={14} />
+            {credits === null ? "…" : `${credits} credits`}
+          </button>
           <button
             type="button"
             onClick={logout}
@@ -232,15 +297,20 @@ export default function DashboardPage() {
         <div className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[42rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-200/60 via-violet-200/50 to-amber-100/60 blur-3xl" />
         <main className="relative mx-auto max-w-2xl px-4 pb-14 pt-8 sm:pt-10">
           <div className="text-center">
-            <h1 className="mx-auto max-w-md text-[28px] font-black leading-[1.15] tracking-tight text-slate-900 sm:text-[34px]">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200/80 bg-white px-3.5 py-1.5 text-[12px] font-bold text-indigo-700 shadow-sm">
+              🔍 Deep Internet Analysis • 1 credit = ₹1
+            </span>
+            <h1 className="mx-auto mt-3 max-w-md text-[28px] font-black leading-[1.15] tracking-tight text-slate-900 sm:text-[34px]">
               See what the internet knows{" "}
               <span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
                 about you
               </span>
             </h1>
             <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-slate-600">
-              Type your name, phone number, or username below. We&apos;ll show
-              your public photos, profiles &amp; mentions — in simple words.
+              Type your name, phone number, or username below. We&apos;ll run a
+              Deep Internet Analysis and show public profiles &amp; mentions — in
+              simple words. Cost: {reportCost(includeSummary)} credits
+              {includeSummary ? " (with AI)" : ""}.
             </p>
           </div>
 
@@ -282,7 +352,53 @@ export default function DashboardPage() {
               />
             )}
 
-            {status === "done" && data && (
+            {status === "done" && locked && (
+              <section aria-live="polite">
+                <PaywallBanner
+                  requiredCredits={locked.required_credits}
+                  currentCredits={locked.current_credits}
+                  includeSummary={includeSummary}
+                  onBuy={() => setBuyOpen(true)}
+                />
+                <div className="mb-3 flex items-center gap-2.5 rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400 text-white">
+                    <Lock size={19} />
+                  </span>
+                  <div>
+                    <p className="text-[15px] font-extrabold text-slate-900">
+                      {locked.total_results}{" "}
+                      {locked.total_results === 1 ? "result" : "results"} found — 2
+                      shown free
+                    </p>
+                    <p className="text-[12px] text-slate-500">
+                      {locked.message || "Buy credits to unlock the full report"}
+                    </p>
+                  </div>
+                </div>
+                {/* Do NOT show agent summary when locked. */}
+                {locked.results.length === 0 ? (
+                  <NoResults />
+                ) : (
+                  <>
+                    <p className="mb-2.5 text-[12.5px] font-medium text-slate-500">
+                      Showing {locked.results.length} of {locked.total_results} •
+                      First 2 unlocked, rest blurred 🔒
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {locked.results.map((r, i) => (
+                        <ResultCard
+                          key={`${r.link}-${i}`}
+                          result={r}
+                          locked={r.link === "locked"}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+
+            {status === "done" && data && !locked && (
               <section aria-live="polite">
                 <div className="mb-3 flex items-center justify-between gap-2 rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                   <div className="flex items-center gap-2.5">
@@ -295,7 +411,11 @@ export default function DashboardPage() {
                         {data.total_results === 1 ? "result" : "results"} found
                       </p>
                       <p className="text-[12px] text-slate-500">
-                        {data.message || "Search completed"}
+                        {data.message || "Deep Internet Analysis completed"}
+                        {typeof data.credits_charged === "number" &&
+                          ` • ${data.credits_charged} credits used`}
+                        {typeof data.current_credits === "number" &&
+                          ` • Balance: ${data.current_credits}`}
                       </p>
                     </div>
                   </div>
@@ -396,6 +516,20 @@ export default function DashboardPage() {
           </footer>
         </main>
       </div>
+
+      <BuyCreditsModal
+        open={buyOpen}
+        onClose={() => setBuyOpen(false)}
+        onSuccess={(balance) => {
+          setCredits(balance);
+          // Re-run the last search to unlock the full report.
+          void doSearch();
+        }}
+        onAuthExpired={() => {
+          clearAuth();
+          router.replace("/login");
+        }}
+      />
     </div>
   );
 }

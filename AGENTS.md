@@ -31,9 +31,18 @@ npm run lint   # must pass before commit (eslint)
 
 - Base URL: `https://dfa-9ha3.onrender.com` (override via
   `NEXT_PUBLIC_API_BASE_URL`, see `.env.example`)
-- `POST /search`, JSON body — **send only filled fields**:
-  `{ "query": "<name>", "city": "...", "phone": "...", "username": "...", "email": "..." }`
-- Response: `{ success, input, total_results, results: [{ platform, title, link, snippet?, rank? }], message }`
+- `POST /deep-internet-analysis` (preferred; `/search` legacy), JSON body —
+  **send only filled fields + auth**:
+  `{ "query": "<name>", "city": "...", "phone": "...", "username": "...", "email": "...", "include_summary": true }`
+  with `Authorization: Bearer <token>`. UI brand name is "Deep Internet Analysis".
+- Success response adds `locked:false, credits_charged, current_credits, required_credits`.
+  HTTP 402 = paywall (`detail = {locked:true, message, input, total_results, results (first 2 visible, rest masked + link:"locked"), agent_summary:null, required_credits, current_credits}`).
+  HTTP 401 = redirect to `/login`.
+- Credits (1 credit = ₹1): signup bonus 20 · report 20 · AI mode +10 (search w/ summary 30) · re-summarize 10.
+  `GET /api/credits/balance → {credits}` (auth). Razorpay Standard Checkout:
+  `POST /api/create-order {credits} → {order_id, amount, currency, credits, key_id}` (public key only, never KEY_SECRET),
+  `POST /api/verify-payment {razorpay_order_id, razorpay_payment_id, razorpay_signature} → {credits_added, balance}`.
+  Checkout script lives in `app/layout.tsx`; modal in `components/BuyCreditsModal.tsx`.
 - Render free tier sleeps: first request can take 20–40s. UI copy already
   warns users; keep long `fetch` timeout / no aggressive abort. Network
   failure message lives in `searchFootprint()` — keep it user-friendly.
@@ -47,11 +56,16 @@ src/
     layout.tsx    # metadata, viewport, Geist fonts
     globals.css   # Tailwind v4 `@import "tailwindcss"`, loading-slide keyframes, .dot-grid
   components/
-    SearchForm.tsx  # form fields + validation display + big submit button
-    ResultCard.tsx  # platform badge, title, snippet, Open link + copy
+    SearchForm.tsx  # form fields + validation display + big submit button (AI mode + cost line)
+    ResultCard.tsx  # platform badge, title, snippet, Open link + copy (+ locked blur mode)
     States.tsx      # LoadingState, LoadingSkeleton, EmptyState, NoResults, ErrorState
+    BuyCreditsModal.tsx  # Razorpay Standard Checkout modal (input 1–100000, default 50)
+    PaywallBanner.tsx    # 402 banner + buy CTA
+    SummaryCard.tsx   # AI summary render
   lib/
-    api.ts  # types, buildSearchPayload, searchFootprint, validateForm, platformStyle, shortHost
+    api.ts  # types, buildSearchPayload, searchFootprint, validateForm, platformStyle, shortHost, PaywallError/UnauthorizedError, REPORT_COST/AI_COST
+    auth.ts  # AuthUser (incl. credits), token storage, signup/login/me
+    payments.ts  # getCreditsBalance, createOrder, verifyPayment, Razorpay types
 ```
 
 ## Conventions

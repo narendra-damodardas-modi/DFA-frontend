@@ -69,7 +69,7 @@ export default function LandingPage() {
               Digital Footprint Finder
             </p>
             <p className="text-[12px] font-medium text-slate-500">
-              Made for India 🇮🇳 • Free to use
+              Made for India 🇮🇳 • 20 free credits on signup
             </p>
           </div>
           {loggedIn ? (
@@ -105,7 +105,7 @@ export default function LandingPage() {
           {/* ---------- Hero ---------- */}
           <div className="text-center">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200/80 bg-white px-3.5 py-1.5 text-[12px] font-bold text-indigo-700 shadow-sm">
-              <Sparkles size={13} /> 100% public data • Safe &amp; private
+              <Sparkles size={13} /> Deep Internet Analysis • 100% public data
             </span>
             <h1 className="mx-auto mt-4 max-w-md text-[30px] font-black leading-[1.15] tracking-tight text-slate-900 sm:text-[38px]">
               See what the internet knows{" "}
@@ -171,7 +171,8 @@ export default function LandingPage() {
               Things you can do here
             </h2>
             <p className="mt-1 text-[13.5px] text-slate-500">
-              One free account gives you all of these:
+              One account gives you Deep Internet Analysis + AI summary (20 free
+              credits on signup, 1 credit = ₹1):
             </p>
             <ul className="mt-4 space-y-3">
               {THINGS.map((item) => (

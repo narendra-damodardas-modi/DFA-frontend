@@ -18,7 +18,7 @@ export function LoadingState() {
         <Loader2 size={26} className="animate-spin text-indigo-600" />
       </div>
       <h3 className="text-[16px] font-bold text-slate-900">
-        Searching the internet for you…
+        Running Deep Internet Analysis for you…
       </h3>
       <p className="mx-auto mt-1.5 max-w-sm text-[13.5px] leading-relaxed text-slate-500">
         Checking Instagram, Facebook, LinkedIn, Google and more. This can take
@@ -63,7 +63,7 @@ export function EmptyState({ onExample }: { onExample: () => void }) {
       </h3>
       <p className="mx-auto mt-1.5 max-w-sm text-[13.5px] leading-relaxed text-slate-500">
         Fill any box above — like your name or phone number — and tap{" "}
-        <span className="font-semibold text-slate-700">Search Digital Footprint</span>.
+        <span className="font-semibold text-slate-700">Run Deep Internet Analysis</span>.
       </p>
       <button
         type="button"

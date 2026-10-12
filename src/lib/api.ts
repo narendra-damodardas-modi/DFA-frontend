@@ -21,6 +21,41 @@ export interface FootprintResponse {
   results: PlatformResult[];
   agent_summary: string | null;
   message: string;
+  locked?: boolean;
+  credits_charged?: number | null;
+  current_credits?: number | null;
+  required_credits?: number | null;
+}
+
+/** Locked (HTTP 402) report payload — first 2 rows visible, rest masked. */
+export interface LockedReport {
+  locked: true;
+  message: string;
+  input: Record<string, string>;
+  total_results: number;
+  results: PlatformResult[];
+  agent_summary: null;
+  required_credits: number;
+  current_credits: number;
+}
+
+/** Thrown when the backend returns HTTP 402 (not enough credits). */
+export class PaywallError extends Error {
+  locked: LockedReport;
+  constructor(locked: LockedReport) {
+    super(locked.message || "Not enough credits to unlock this report.");
+    this.name = "PaywallError";
+    this.locked = locked;
+  }
+}
+
+/** Thrown when the backend returns HTTP 401 (missing/expired token). */
+export class UnauthorizedError extends Error {
+  status = 401;
+  constructor(message = "Please log in to run Deep Internet Analysis.") {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
 }
 
 export interface SummarizeResponse {
@@ -72,12 +107,15 @@ export async function searchFootprint(
     throw new Error("Please fill at least one box to start search.");
   }
 
-  // Attach auth token for future-proofing (backend currently allows open search).
+  // Deep Internet Analysis requires login — send JWT Bearer token.
   const authHeader = getAuthHeader();
+  if (!authHeader.Authorization) {
+    throw new UnauthorizedError("Please log in to run Deep Internet Analysis.");
+  }
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/search`, {
+    res = await fetch(`${API_BASE}/deep-internet-analysis`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeader },
       body: JSON.stringify(payload),
@@ -91,21 +129,63 @@ export async function searchFootprint(
   }
 
   if (!res.ok) {
-    let detail = "";
+    let data: Record<string, unknown> | null = null;
     try {
-      const data = await res.json();
-      detail = data?.detail || data?.message || "";
+      data = (await res.json()) as Record<string, unknown>;
     } catch {
       /* ignore */
     }
-    throw new Error(
-      detail || `Server error (${res.status}). Please try again in a minute.`
-    );
+    // Paywall: backend returns 402 with detail = locked report object.
+    if (res.status === 402) {
+      const raw =
+        data && typeof data.detail === "object" && data.detail !== null
+          ? (data.detail as Record<string, unknown>)
+          : data;
+      const locked: LockedReport = {
+        locked: true,
+        message:
+          typeof raw?.message === "string" && raw.message
+            ? raw.message
+            : "Not enough credits to unlock this report.",
+        input:
+          raw?.input && typeof raw.input === "object"
+            ? (raw.input as Record<string, string>)
+            : {},
+        total_results:
+          typeof raw?.total_results === "number" ? raw.total_results : 0,
+        results: Array.isArray(raw?.results)
+          ? (raw.results as PlatformResult[])
+          : [],
+        agent_summary: null,
+        required_credits:
+          typeof raw?.required_credits === "number"
+            ? raw.required_credits
+            : includeSummary
+              ? 30
+              : 20,
+        current_credits:
+          typeof raw?.current_credits === "number" ? raw.current_credits : 0,
+      };
+      throw new PaywallError(locked);
+    }
+    if (res.status === 401) {
+      const detail =
+        (data?.detail as string) ||
+        (data?.message as string) ||
+        "Please log in to run Deep Internet Analysis.";
+      throw new UnauthorizedError(detail);
+    }
+    const detail =
+      (data?.detail as string) ||
+      (data?.message as string) ||
+      `Server error (${res.status}). Please try again in a minute.`;
+    throw new Error(detail);
   }
 
   const data = (await res.json()) as FootprintResponse;
   return {
     ...data,
+    locked: false,
     results: Array.isArray(data.results) ? data.results : [],
     agent_summary:
       typeof data.agent_summary === "string" ? data.agent_summary : null,
@@ -116,9 +196,19 @@ export async function searchFootprint(
   };
 }
 
+/** Pricing: 1 credit = ₹1. Report 20, AI mode +10, standalone re-summarize 10. */
+export const REPORT_COST = 20;
+export const AI_COST = 10;
+export const RESUMMARIZE_COST = 10;
+
+export function reportCost(includeSummary: boolean): number {
+  return REPORT_COST + (includeSummary ? AI_COST : 0);
+}
+
 /**
  * Re-generate the AI summary without re-running the search.
  * POST /summarize { input, results } → { success, agent_summary }
+ * Standalone re-summarize costs 10 credits (backend-enforced).
  */
 export async function summarizeFootprint(
   input: Record<string, string>,
@@ -147,6 +237,17 @@ export async function summarizeFootprint(
       detail = data?.detail || data?.message || "";
     } catch {
       /* ignore */
+    }
+    if (res.status === 401) {
+      throw new UnauthorizedError(
+        detail || "Please log in again to make a summary."
+      );
+    }
+    if (res.status === 402) {
+      throw new Error(
+        detail ||
+          "Not enough credits for a summary (10 credits). Buy credits to continue."
+      );
     }
     if (res.status === 502) {
       throw new Error(
