@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -15,9 +15,11 @@ import {
   ShieldCheck,
   Sparkles,
   User,
+  Wallet,
   Zap,
 } from "lucide-react";
-import { getToken } from "@/lib/auth";
+import { getToken, getUser } from "@/lib/auth";
+import { getCreditsBalance } from "@/lib/payments";
 
 const THINGS = [
   {
@@ -55,6 +57,25 @@ const THINGS = [
 export default function LandingPage() {
   // Lazy init from localStorage — avoids a sync setState inside an effect.
   const [loggedIn] = useState<boolean>(() => getToken() !== null);
+  const [credits, setCredits] = useState<number | null>(
+    () => getUser()?.credits ?? null
+  );
+
+  // Show available credits top-right for logged-in users.
+  useEffect(() => {
+    if (!loggedIn) return;
+    let live = true;
+    getCreditsBalance()
+      .then((b) => {
+        if (live) setCredits(b);
+      })
+      .catch(() => {
+        /* keep cached balance on failure */
+      });
+    return () => {
+      live = false;
+    };
+  }, [loggedIn]);
 
   return (
     <div className="min-h-screen bg-[#f6f7fb]">
@@ -73,12 +94,22 @@ export default function LandingPage() {
             </p>
           </div>
           {loggedIn ? (
-            <Link
-              href="/dashboard"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-indigo-700"
-            >
-              <LayoutDashboard size={14} /> Dashboard
-            </Link>
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                href="/dashboard"
+                title="Your available credits"
+                className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-[12.5px] font-extrabold text-indigo-700 transition hover:bg-indigo-100"
+              >
+                <Wallet size={14} />
+                {credits === null ? "…" : `${credits} credits`}
+              </Link>
+              <Link
+                href="/dashboard"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-indigo-700"
+              >
+                <LayoutDashboard size={14} /> Dashboard
+              </Link>
+            </div>
           ) : (
             <div className="flex shrink-0 items-center gap-2">
               <Link

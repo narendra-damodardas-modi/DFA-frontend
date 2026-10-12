@@ -173,3 +173,102 @@ export function persistAuth(auth: AuthResponse): void {
   saveToken(auth.access_token);
   saveUser(auth.user);
 }
+
+/* ---------- Email OTP + forgot password ---------- */
+
+export interface OtpResponse {
+  success: boolean;
+  message: string;
+  dev_otp?: string | null;
+}
+
+async function handleOtpResponse(res: Response): Promise<OtpResponse> {
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    throw new Error(extractDetail(data, `Request failed (${res.status}). Please try again.`));
+  }
+  return data as OtpResponse;
+}
+
+async function postOtp(path: string, body: Record<string, string>): Promise<OtpResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error(
+      "Could not connect to server. It may be waking up — please wait 30 seconds and try again."
+    );
+  }
+  return handleOtpResponse(res);
+}
+
+/** Step 1 of signup — validates details and emails a 6-digit OTP (email is mandatory). */
+export function requestSignupOtp(input: { username: string; email: string; password: string }) {
+  return postOtp("/auth/request-signup-otp", input);
+}
+
+/** Step 2 of signup — verifies OTP and creates the account (returns AuthResponse). */
+export async function verifySignupOtp(input: {
+  username: string;
+  email: string;
+  password: string;
+  otp: string;
+}): Promise<AuthResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/verify-signup-otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    throw new Error(
+      "Could not connect to server. It may be waking up — please wait 30 seconds and try again."
+    );
+  }
+  return handleAuthResponse(res);
+}
+
+/** Forgot password — sends a 6-digit reset OTP to the email. */
+export function forgotPasswordRequest(email: string) {
+  return postOtp("/auth/forgot-password", { email });
+}
+
+/** Reset password with the OTP from email. */
+export async function resetPasswordRequest(input: {
+  email: string;
+  otp: string;
+  new_password: string;
+}): Promise<{ success: boolean; message: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    throw new Error(
+      "Could not connect to server. It may be waking up — please wait 30 seconds and try again."
+    );
+  }
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    throw new Error(extractDetail(data, `Request failed (${res.status}). Please try again.`));
+  }
+  return data as { success: boolean; message: string };
+}
