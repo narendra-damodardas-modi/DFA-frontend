@@ -54,7 +54,7 @@ export default function ResultCard({
             <Lock size={16} />
           </span>
           <p className="text-[13px] font-bold text-slate-800">Locked 🔒</p>
-          <p className="text-[12px] text-slate-500">Buy credits to unlock</p>
+          <p className="text-[12px] text-slate-500">Unlock the full report (₹20)</p>
         </div>
       </article>
     );

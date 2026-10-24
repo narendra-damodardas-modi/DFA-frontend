@@ -206,6 +206,74 @@ export function reportCost(includeSummary: boolean): number {
 }
 
 /**
+ * Free Instagram-only preview (no login required). Always locked=true —
+ * every result arrives masked (link "locked", partial titles) so the full
+ * Deep Internet Analysis must be unlocked for 20 credits (₹20).
+ */
+export async function freeSearchFootprint(
+  values: SearchFormValues,
+  signal?: AbortSignal
+): Promise<LockedReport> {
+  const payload = buildSearchPayload(values);
+
+  if (Object.keys(payload).length === 0) {
+    throw new Error("Please fill at least one box to start search.");
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/free-search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new Error(
+      "Could not connect to server. It may be waking up — please wait 30 seconds and try again."
+    );
+  }
+
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const data = await res.json();
+      detail = data?.detail || data?.message || "";
+    } catch {
+      /* ignore */
+    }
+    if (res.status === 422) {
+      throw new Error(
+        detail || "Please fill at least one box — name, phone, username or email."
+      );
+    }
+    throw new Error(
+      detail || `Server error (${res.status}). Please try again in a minute.`
+    );
+  }
+
+  const data = (await res.json()) as FootprintResponse;
+  return {
+    locked: true,
+    message: data.message || "Free Instagram preview.",
+    input: data.input ?? {},
+    total_results:
+      typeof data.total_results === "number"
+        ? data.total_results
+        : (data.results?.length ?? 0),
+    results: Array.isArray(data.results) ? data.results : [],
+    agent_summary: null,
+    required_credits:
+      typeof data.required_credits === "number"
+        ? data.required_credits
+        : REPORT_COST,
+    current_credits:
+      typeof data.current_credits === "number" ? data.current_credits : 0,
+  };
+}
+
+/**
  * Re-generate the AI summary without re-running the search.
  * POST /summarize { input, results } → { success, agent_summary }
  * Standalone re-summarize costs 10 credits (backend-enforced).

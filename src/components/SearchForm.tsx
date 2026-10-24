@@ -233,8 +233,8 @@ export default function SearchForm({
             </span>
             <span className="mt-1 block text-[12.5px] font-bold text-indigo-700">
               {includeSummary
-                ? "Cost: 30 credits (with AI)"
-                : "Cost: 20 credits"}
+                ? "Unlock cost: 30 credits (₹30) with AI"
+                : "Unlock cost: 20 credits (₹20)"}
             </span>
           </span>
         </label>
@@ -247,7 +247,7 @@ export default function SearchForm({
           {loading ? (
             <>
               <Loader2 size={21} className="animate-spin" />
-              Running Deep Internet Analysis… please wait
+              Searching Instagram… please wait
             </>
           ) : (
             <>
@@ -255,12 +255,12 @@ export default function SearchForm({
                 size={20}
                 className="transition-transform group-hover:scale-110"
               />
-              Run Deep Internet Analysis
+              Start free search — Instagram preview
             </>
           )}
         </button>
         <p className="text-center text-[12.5px] text-slate-400">
-          🔒 We never save your details. Search is private to your phone.
+          🔒 Free preview, no account needed. We never save your details.
         </p>
       </form>
     </section>

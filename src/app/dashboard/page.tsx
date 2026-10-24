@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   BadgeCheck,
@@ -28,6 +29,7 @@ import {
 import {
   PaywallError,
   UnauthorizedError,
+  freeSearchFootprint,
   reportCost,
   searchFootprint,
   summarizeFootprint,
@@ -61,12 +63,37 @@ const EXAMPLE: SearchFormValues = {
   email: "",
 };
 
+const PENDING_UNLOCK_KEY = "dfa_pending_unlock";
+
 type Status = "idle" | "loading" | "done" | "error";
 type AuthStatus = "checking" | "ok";
+/** Which kind of locked view is on screen: free Instagram preview or a 402. */
+type PreviewKind = "free" | "credit";
+
+function readPendingUnlock(): {
+  values: SearchFormValues;
+  includeSummary: boolean;
+} | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_UNLOCK_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      values: SearchFormValues;
+      includeSummary: boolean;
+    };
+    if (parsed && parsed.values) return parsed;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
+  // Guests (no token) start as "ok" — free search works without login.
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(() =>
+    getToken() ? "checking" : "ok"
+  );
   // Lazy init from localStorage so refresh shows cached user without a sync setState in effect.
   const [user, setUser] = useState<AuthUser | null>(() => getUser());
   const [credits, setCredits] = useState<number | null>(
@@ -75,8 +102,10 @@ export default function DashboardPage() {
 
   const [values, setValues] = useState<SearchFormValues>(EMPTY);
   const [status, setStatus] = useState<Status>("idle");
+  const [loadingKind, setLoadingKind] = useState<"free" | "paid">("free");
   const [data, setData] = useState<FootprintResponse | null>(null);
   const [locked, setLocked] = useState<LockedReport | null>(null);
+  const [previewKind, setPreviewKind] = useState<PreviewKind>("free");
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [platformFilter, setPlatformFilter] = useState<string>("All");
@@ -97,36 +126,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Protected guard: token required, validated via GET /auth/me.
-  // Refresh persists login via localStorage + this check.
-  useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-    // Re-validate the stored token via GET /auth/me (in a callback, not sync).
-    fetchMe(token)
-      .then((me) => {
-        setUser(me);
-        if (typeof me.credits === "number") setCredits(me.credits);
-        setAuthStatus("ok");
-        // Keep cached copy fresh (persist login across refresh).
-        try {
-          localStorage.setItem("user", JSON.stringify(me));
-        } catch {
-          /* ignore */
-        }
-        // Fetch the latest wallet balance (auth required).
-        refreshBalance();
-      })
-      .catch(() => {
-        clearAuth();
-        router.replace("/login");
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
-
   const logout = () => {
     abortRef.current?.abort();
     clearAuth();
@@ -138,7 +137,18 @@ export default function DashboardPage() {
     if (formError) setFormError(null);
   };
 
-  const doSearch = async (override?: SearchFormValues) => {
+  const savePendingUnlock = (v: SearchFormValues) => {
+    try {
+      sessionStorage.setItem(
+        PENDING_UNLOCK_KEY,
+        JSON.stringify({ values: v, includeSummary })
+      );
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const runFreePreview = async (override?: SearchFormValues) => {
     const v = override ?? values;
     if (override) setValues(override);
 
@@ -151,7 +161,9 @@ export default function DashboardPage() {
     setError(null);
     setSummaryError(null);
     setLocked(null);
+    setData(null);
     setStatus("loading");
+    setLoadingKind("free");
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -161,10 +173,43 @@ export default function DashboardPage() {
     );
 
     try {
-      const res = await searchFootprint(v, ctrl.signal, includeSummary);
+      const preview = await freeSearchFootprint(v, ctrl.signal);
+      setLocked(preview);
+      setPreviewKind("free");
+      setPlatformFilter("All");
+      setStatus("done");
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setError(
+        e instanceof Error ? e.message : "Something went wrong. Please try again."
+      );
+      setStatus("error");
+    }
+  };
+
+  const runPaidSearch = async (
+    v: SearchFormValues,
+    withSummary = includeSummary
+  ) => {
+    setError(null);
+    setSummaryError(null);
+    setLocked(null);
+    setData(null);
+    setStatus("loading");
+    setLoadingKind("paid");
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    requestAnimationFrame(() =>
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    );
+
+    try {
+      const res = await searchFootprint(v, ctrl.signal, withSummary);
       setData(res);
       setLocked(null);
-      setSummarySkipped(!includeSummary);
+      setSummarySkipped(!withSummary);
       setPlatformFilter("All");
       // Update wallet from the success payload; fall back to a refresh.
       if (typeof res.current_credits === "number") {
@@ -176,6 +221,7 @@ export default function DashboardPage() {
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
       if (e instanceof UnauthorizedError) {
+        savePendingUnlock(v);
         clearAuth();
         router.replace("/login");
         return;
@@ -183,6 +229,7 @@ export default function DashboardPage() {
       if (e instanceof PaywallError) {
         setData(null);
         setLocked(e.locked);
+        setPreviewKind("credit");
         setCredits(e.locked.current_credits);
         setPlatformFilter("All");
         setStatus("done");
@@ -193,6 +240,58 @@ export default function DashboardPage() {
       );
       setStatus("error");
     }
+  };
+
+  // With a token: validate via GET /auth/me, then consume any pending
+  // unlock saved before the login redirect and run the paid search.
+  const consumeAuthAndPendingUnlock = () => {
+    const token = getToken();
+    if (!token) return;
+    fetchMe(token)
+      .then((me) => {
+        setUser(me);
+        if (typeof me.credits === "number") setCredits(me.credits);
+        setAuthStatus("ok");
+        try {
+          localStorage.setItem("user", JSON.stringify(me));
+        } catch {
+          /* ignore */
+        }
+        // Fetch the latest wallet balance (auth required).
+        void refreshBalance();
+        // The user clicked "Unlock full report" as a guest and logged in —
+        // continue where they left off.
+        const pending = readPendingUnlock();
+        if (pending) {
+          setValues(pending.values);
+          setIncludeSummary(pending.includeSummary);
+          try {
+            sessionStorage.removeItem(PENDING_UNLOCK_KEY);
+          } catch {
+            /* ignore */
+          }
+          void runPaidSearch(pending.values, pending.includeSummary);
+        }
+      })
+      .catch(() => {
+        clearAuth();
+        router.replace("/login");
+      });
+  };
+
+  // Mount: validate a stored token (if any) and continue a pending unlock.
+  useEffect(() => {
+    consumeAuthAndPendingUnlock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const unlockFull = () => {
+    if (!getToken()) {
+      savePendingUnlock(values);
+      router.push("/login");
+      return;
+    }
+    void runPaidSearch(values);
   };
 
   const regenerateSummary = async () => {
@@ -269,26 +368,47 @@ export default function DashboardPage() {
               Digital Footprint Finder
             </p>
             <p className="truncate text-[12px] font-medium text-slate-500">
-              Hello, {user?.username ?? "friend"} 👋
+              {user
+                ? `Hello, ${user.username} 👋`
+                : "Free Instagram search • no account needed"}
             </p>
           </div>
-          {/* Wallet balance */}
-          <button
-            type="button"
-            onClick={() => setBuyOpen(true)}
-            title="Buy credits"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-[12.5px] font-extrabold text-indigo-700 transition hover:bg-indigo-100"
-          >
-            <Wallet size={14} />
-            {credits === null ? "…" : `${credits} credits`}
-          </button>
-          <button
-            type="button"
-            onClick={logout}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-[12.5px] font-bold text-slate-600 transition hover:bg-slate-50"
-          >
-            <LogOut size={14} /> Logout
-          </button>
+          {user ? (
+            <>
+              {/* Wallet balance */}
+              <button
+                type="button"
+                onClick={() => setBuyOpen(true)}
+                title="Buy credits"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-[12.5px] font-extrabold text-indigo-700 transition hover:bg-indigo-100"
+              >
+                <Wallet size={14} />
+                {credits === null ? "…" : `${credits} credits`}
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-[12.5px] font-bold text-slate-600 transition hover:bg-slate-50"
+              >
+                <LogOut size={14} /> Logout
+              </button>
+            </>
+          ) : (
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                href="/login"
+                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-[12.5px] font-bold text-slate-600 transition hover:bg-slate-50"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/signup"
+                className="rounded-full bg-slate-900 px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-indigo-700"
+              >
+                Sign up
+              </Link>
+            </div>
+          )}
         </div>
       </header>
 
@@ -307,10 +427,10 @@ export default function DashboardPage() {
               </span>
             </h1>
             <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-slate-600">
-              Type your name, phone number, or username below. We&apos;ll run a
-              Deep Internet Analysis and show public profiles &amp; mentions — in
-              simple words. Cost: {reportCost(includeSummary)} credits
-              {includeSummary ? " (with AI)" : ""}.
+              Type a name, phone number, or username below. We&apos;ll show a{" "}
+              <span className="font-semibold text-slate-800">free Instagram
+              preview</span> first — unlock the full report anytime for ₹
+              {reportCost(includeSummary)}.
             </p>
           </div>
 
@@ -319,8 +439,8 @@ export default function DashboardPage() {
             <SearchForm
               values={values}
               onChange={patch}
-              onSubmit={() => doSearch()}
-              onFillExample={() => doSearch(EXAMPLE)}
+              onSubmit={() => runFreePreview()}
+              onFillExample={() => runFreePreview(EXAMPLE)}
               onClear={() => {
                 setValues(EMPTY);
                 setFormError(null);
@@ -335,12 +455,12 @@ export default function DashboardPage() {
           {/* Results */}
           <div ref={resultsRef} className="mt-6 scroll-mt-20">
             {status === "idle" && (
-              <EmptyState onExample={() => doSearch(EXAMPLE)} />
+              <EmptyState onExample={() => runFreePreview(EXAMPLE)} />
             )}
 
             {status === "loading" && (
               <div className="space-y-3">
-                <LoadingState />
+                <LoadingState free={loadingKind === "free"} />
                 <LoadingSkeleton />
               </div>
             )}
@@ -348,16 +468,23 @@ export default function DashboardPage() {
             {status === "error" && (
               <ErrorState
                 message={error ?? "Please try again."}
-                onRetry={() => doSearch()}
+                onRetry={() => runFreePreview()}
               />
             )}
 
             {status === "done" && locked && (
               <section aria-live="polite">
                 <PaywallBanner
-                  requiredCredits={locked.required_credits}
-                  currentCredits={locked.current_credits}
+                  requiredCredits={
+                    previewKind === "free"
+                      ? reportCost(includeSummary)
+                      : locked.required_credits
+                  }
+                  currentCredits={
+                    previewKind === "free" ? credits : locked.current_credits
+                  }
                   includeSummary={includeSummary}
+                  onUnlock={unlockFull}
                   onBuy={() => setBuyOpen(true)}
                 />
                 <div className="mb-3 flex items-center gap-2.5 rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
@@ -367,11 +494,12 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-[15px] font-extrabold text-slate-900">
                       {locked.total_results}{" "}
-                      {locked.total_results === 1 ? "result" : "results"} found — 2
-                      shown free
+                      {locked.total_results === 1 ? "trace" : "traces"} found
+                      {previewKind === "free" ? " on Instagram" : ""}
+                      {previewKind === "credit" ? " — 2 shown free" : ""}
                     </p>
                     <p className="text-[12px] text-slate-500">
-                      {locked.message || "Buy credits to unlock the full report"}
+                      {locked.message || "Unlock the full report to see everything"}
                     </p>
                   </div>
                 </div>
@@ -381,8 +509,9 @@ export default function DashboardPage() {
                 ) : (
                   <>
                     <p className="mb-2.5 text-[12.5px] font-medium text-slate-500">
-                      Showing {locked.results.length} of {locked.total_results} •
-                      First 2 unlocked, rest blurred 🔒
+                      {previewKind === "free"
+                        ? `Showing ${locked.results.length} blurred previews 🔒`
+                        : `Showing ${locked.results.length} of ${locked.total_results} • First 2 unlocked, rest blurred 🔒`}
                     </p>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {locked.results.map((r, i) => (
@@ -517,19 +646,21 @@ export default function DashboardPage() {
         </main>
       </div>
 
-      <BuyCreditsModal
-        open={buyOpen}
-        onClose={() => setBuyOpen(false)}
-        onSuccess={(balance) => {
-          setCredits(balance);
-          // Re-run the last search to unlock the full report.
-          void doSearch();
-        }}
-        onAuthExpired={() => {
-          clearAuth();
-          router.replace("/login");
-        }}
-      />
+      {user && (
+        <BuyCreditsModal
+          open={buyOpen}
+          onClose={() => setBuyOpen(false)}
+          onSuccess={(balance) => {
+            setCredits(balance);
+            // The user was unlocking a report — re-run the paid search.
+            void runPaidSearch(values);
+          }}
+          onAuthExpired={() => {
+            clearAuth();
+            router.replace("/login");
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -8,7 +8,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-export function LoadingState() {
+export function LoadingState({ free = false }: { free?: boolean }) {
   return (
     <div
       aria-live="polite"
@@ -18,11 +18,12 @@ export function LoadingState() {
         <Loader2 size={26} className="animate-spin text-indigo-600" />
       </div>
       <h3 className="text-[16px] font-bold text-slate-900">
-        Running Deep Internet Analysis for you…
+        {free ? "Searching Instagram for you…" : "Running Deep Internet Analysis for you…"}
       </h3>
       <p className="mx-auto mt-1.5 max-w-sm text-[13.5px] leading-relaxed text-slate-500">
-        Checking Instagram, Facebook, LinkedIn, Google and more. This can take
-        20–40 seconds. Please don&apos;t close this page.
+        {free
+          ? "Checking public Instagram pages with your details. This usually takes a few seconds."
+          : "Checking Instagram, Facebook, LinkedIn, Google and more. This can take 20–40 seconds. Please don't close this page."}
       </p>
       <div className="mx-auto mt-5 h-2 max-w-xs overflow-hidden rounded-full bg-slate-100">
         <div className="h-full w-1/2 animate-[loading-slide_1.2s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-indigo-500 to-violet-500" />
@@ -63,7 +64,7 @@ export function EmptyState({ onExample }: { onExample: () => void }) {
       </h3>
       <p className="mx-auto mt-1.5 max-w-sm text-[13.5px] leading-relaxed text-slate-500">
         Fill any box above — like your name or phone number — and tap{" "}
-        <span className="font-semibold text-slate-700">Run Deep Internet Analysis</span>.
+        <span className="font-semibold text-slate-700">Start free search</span>.
       </p>
       <button
         type="button"

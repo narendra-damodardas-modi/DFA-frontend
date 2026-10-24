@@ -31,6 +31,8 @@ npm run lint   # must pass before commit (eslint)
 
 - Base URL: `https://dfa-9ha3.onrender.com` (override via
   `NEXT_PUBLIC_API_BASE_URL`, see `.env.example`)
+- `POST /free-search` (no auth): free Instagram-only preview from all filled
+  fields. Always `locked:true` — every result masked (partial title, `link:"locked"`).
 - `POST /deep-internet-analysis` (preferred; `/search` legacy), JSON body —
   **send only filled fields + auth**:
   `{ "query": "<name>", "city": "...", "phone": "...", "username": "...", "email": "...", "include_summary": true }`
@@ -38,8 +40,13 @@ npm run lint   # must pass before commit (eslint)
 - Success response adds `locked:false, credits_charged, current_credits, required_credits`.
   HTTP 402 = paywall (`detail = {locked:true, message, input, total_results, results (first 2 visible, rest masked + link:"locked"), agent_summary:null, required_credits, current_credits}`).
   HTTP 401 = redirect to `/login`.
-- Credits (1 credit = ₹1): signup bonus 20 · report 20 · AI mode +10 (search w/ summary 30) · re-summarize 10.
-  `GET /api/credits/balance → {credits}` (auth). Razorpay Standard Checkout:
+- Credits (1 credit = ₹1): signup bonus 0 (no free credits) · report 20 ·
+  AI mode +10 (search w/ summary 30) · re-summarize 10.
+  Funnel: dashboard works logged-out — form submit runs the FREE Instagram
+  preview (`freeSearchFootprint`), then "Unlock full report (₹20)" runs the
+  paid search. Guests clicking unlock get `dfa_pending_unlock`
+  (sessionStorage, `{values, includeSummary}`) saved → /login → auto-runs the
+  paid search on the dashboard after auth. `GET /api/credits/balance → {credits}` (auth). Razorpay Standard Checkout:
   `POST /api/create-order {credits} → {order_id, amount, currency, credits, key_id}` (public key only, never KEY_SECRET),
   `POST /api/verify-payment {razorpay_order_id, razorpay_payment_id, razorpay_signature} → {credits_added, balance}`.
   Checkout script lives in `app/layout.tsx`; modal in `components/BuyCreditsModal.tsx`.
@@ -52,18 +59,19 @@ npm run lint   # must pass before commit (eslint)
 ```text
 src/
   app/
-    page.tsx      # main page (client component): hero, trust row, form, results, how-it-works, footer
-    layout.tsx    # metadata, viewport, Geist fonts
+    page.tsx      # landing (marketing, CTAs → /dashboard free search)
+    dashboard/page.tsx  # search page: free preview (no login) + unlock flow + results
+    layout.tsx    # metadata, viewport, Geist fonts, Razorpay checkout script
     globals.css   # Tailwind v4 `@import "tailwindcss"`, loading-slide keyframes, .dot-grid
   components/
-    SearchForm.tsx  # form fields + validation display + big submit button (AI mode + cost line)
+    SearchForm.tsx  # form fields + validation display + big submit button (free search CTA, unlock-cost line)
     ResultCard.tsx  # platform badge, title, snippet, Open link + copy (+ locked blur mode)
-    States.tsx      # LoadingState, LoadingSkeleton, EmptyState, NoResults, ErrorState
-    BuyCreditsModal.tsx  # Razorpay Standard Checkout modal (input 1–100000, default 50)
-    PaywallBanner.tsx    # 402 banner + buy CTA
+    States.tsx      # LoadingState (free/full variants), LoadingSkeleton, EmptyState, NoResults, ErrorState
+    BuyCreditsModal.tsx  # Razorpay Standard Checkout modal (input 1–100000, default 20)
+    PaywallBanner.tsx    # 3 states: guest login CTA / unlock now / buy credits
     SummaryCard.tsx   # AI summary render
   lib/
-    api.ts  # types, buildSearchPayload, searchFootprint, validateForm, platformStyle, shortHost, PaywallError/UnauthorizedError, REPORT_COST/AI_COST
+    api.ts  # types, buildSearchPayload, freeSearchFootprint (free preview), searchFootprint, validateForm, platformStyle, shortHost, PaywallError/UnauthorizedError, REPORT_COST/AI_COST
     auth.ts  # AuthUser (incl. credits), token storage, signup/login/me
     payments.ts  # getCreditsBalance, createOrder, verifyPayment, Razorpay types
 ```

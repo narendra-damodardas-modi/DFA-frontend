@@ -17,7 +17,7 @@ interface Props {
 }
 
 export default function BuyCreditsModal({ open, onClose, onSuccess, onAuthExpired }: Props) {
-  const [credits, setCredits] = useState(50);
+  const [credits, setCredits] = useState(20);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);

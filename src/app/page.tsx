@@ -90,7 +90,7 @@ export default function LandingPage() {
               Digital Footprint Finder
             </p>
             <p className="text-[12px] font-medium text-slate-500">
-              Made for India 🇮🇳 • 20 free credits on signup
+              Made for India 🇮🇳 • Free Instagram search
             </p>
           </div>
           {loggedIn ? (
@@ -145,8 +145,8 @@ export default function LandingPage() {
               </span>
             </h1>
             <p className="mx-auto mt-2.5 max-w-md text-[14.5px] leading-relaxed text-slate-600">
-              Type your name, phone number, or username. We&apos;ll show your
-              public photos, profiles &amp; mentions — in simple words.
+              Type a name, phone number, or username. Get a free Instagram
+              preview — then unlock the full public report anytime.
             </p>
             <div className="mt-5 flex flex-col justify-center gap-2.5 sm:flex-row">
               {loggedIn ? (
@@ -159,10 +159,10 @@ export default function LandingPage() {
               ) : (
                 <>
                   <Link
-                    href="/signup"
+                    href="/dashboard"
                     className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-indigo-600 to-indigo-700 px-6 py-3.5 text-[15.5px] font-bold text-white shadow-[0_12px_30px_-8px_rgba(79,70,229,0.6)] transition hover:from-indigo-500 hover:to-indigo-700"
                   >
-                    Get started — it&apos;s free <ArrowRight size={18} />
+                    Try a free search <ArrowRight size={18} />
                   </Link>
                   <Link
                     href="/login"
@@ -202,8 +202,8 @@ export default function LandingPage() {
               Things you can do here
             </h2>
             <p className="mt-1 text-[13.5px] text-slate-500">
-              One account gives you Deep Internet Analysis + AI summary (20 free
-              credits on signup, 1 credit = ₹1):
+              Free preview searches Instagram. Unlock the full report for 20
+              credits (1 credit = ₹1):
             </p>
             <ul className="mt-4 space-y-3">
               {THINGS.map((item) => (
@@ -226,18 +226,10 @@ export default function LandingPage() {
               ))}
             </ul>
             <Link
-              href={loggedIn ? "/dashboard" : "/signup"}
+              href="/dashboard"
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-indigo-600 to-indigo-700 px-6 py-4 text-[16px] font-bold text-white shadow-[0_12px_30px_-8px_rgba(79,70,229,0.6)] transition hover:from-indigo-500 hover:to-indigo-700"
             >
-              {loggedIn ? (
-                <>
-                  <LayoutDashboard size={19} /> Go to dashboard
-                </>
-              ) : (
-                <>
-                  Try it now — free <ArrowRight size={19} />
-                </>
-              )}
+              <Search size={19} /> Try a free search now
             </Link>
             {!loggedIn && (
               <p className="mt-3 text-center text-[13px] text-slate-500">
