@@ -67,8 +67,6 @@ const PENDING_UNLOCK_KEY = "dfa_pending_unlock";
 
 type Status = "idle" | "loading" | "done" | "error";
 type AuthStatus = "checking" | "ok";
-/** Which kind of locked view is on screen: free Instagram preview or a 402. */
-type PreviewKind = "free" | "credit";
 
 function readPendingUnlock(): {
   values: SearchFormValues;
@@ -105,7 +103,8 @@ export default function DashboardPage() {
   const [loadingKind, setLoadingKind] = useState<"free" | "paid">("free");
   const [data, setData] = useState<FootprintResponse | null>(null);
   const [locked, setLocked] = useState<LockedReport | null>(null);
-  const [previewKind, setPreviewKind] = useState<PreviewKind>("free");
+  /** True when `data` is a free Instagram search (upsell banner shown). */
+  const [isFreePreview, setIsFreePreview] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [platformFilter, setPlatformFilter] = useState<string>("All");
@@ -173,9 +172,10 @@ export default function DashboardPage() {
     );
 
     try {
-      const preview = await freeSearchFootprint(v, ctrl.signal);
-      setLocked(preview);
-      setPreviewKind("free");
+      const res = await freeSearchFootprint(v, ctrl.signal);
+      setData(res);
+      setLocked(null);
+      setIsFreePreview(true);
       setPlatformFilter("All");
       setStatus("done");
     } catch (e) {
@@ -209,6 +209,7 @@ export default function DashboardPage() {
       const res = await searchFootprint(v, ctrl.signal, withSummary);
       setData(res);
       setLocked(null);
+      setIsFreePreview(false);
       setSummarySkipped(!withSummary);
       setPlatformFilter("All");
       // Update wallet from the success payload; fall back to a refresh.
@@ -229,7 +230,6 @@ export default function DashboardPage() {
       if (e instanceof PaywallError) {
         setData(null);
         setLocked(e.locked);
-        setPreviewKind("credit");
         setCredits(e.locked.current_credits);
         setPlatformFilter("All");
         setStatus("done");
@@ -475,14 +475,8 @@ export default function DashboardPage() {
             {status === "done" && locked && (
               <section aria-live="polite">
                 <PaywallBanner
-                  requiredCredits={
-                    previewKind === "free"
-                      ? reportCost(includeSummary)
-                      : locked.required_credits
-                  }
-                  currentCredits={
-                    previewKind === "free" ? credits : locked.current_credits
-                  }
+                  requiredCredits={locked.required_credits}
+                  currentCredits={locked.current_credits}
                   includeSummary={includeSummary}
                   onUnlock={unlockFull}
                   onBuy={() => setBuyOpen(true)}
@@ -494,12 +488,11 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-[15px] font-extrabold text-slate-900">
                       {locked.total_results}{" "}
-                      {locked.total_results === 1 ? "trace" : "traces"} found
-                      {previewKind === "free" ? " on Instagram" : ""}
-                      {previewKind === "credit" ? " — 2 shown free" : ""}
+                      {locked.total_results === 1 ? "result" : "results"} found —
+                      2 shown free
                     </p>
                     <p className="text-[12px] text-slate-500">
-                      {locked.message || "Unlock the full report to see everything"}
+                      {locked.message || "Buy credits to unlock the full report"}
                     </p>
                   </div>
                 </div>
@@ -509,9 +502,8 @@ export default function DashboardPage() {
                 ) : (
                   <>
                     <p className="mb-2.5 text-[12.5px] font-medium text-slate-500">
-                      {previewKind === "free"
-                        ? `Showing ${locked.results.length} blurred previews 🔒`
-                        : `Showing ${locked.results.length} of ${locked.total_results} • First 2 unlocked, rest blurred 🔒`}
+                      Showing {locked.results.length} of {locked.total_results} •
+                      First 2 unlocked, rest blurred 🔒
                     </p>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {locked.results.map((r, i) => (
@@ -529,6 +521,16 @@ export default function DashboardPage() {
 
             {status === "done" && data && !locked && (
               <section aria-live="polite">
+                {isFreePreview && (
+                  <PaywallBanner
+                    requiredCredits={reportCost(includeSummary)}
+                    currentCredits={credits}
+                    includeSummary={includeSummary}
+                    onUnlock={unlockFull}
+                    onBuy={() => setBuyOpen(true)}
+                    freePreview
+                  />
+                )}
                 <div className="mb-3 flex items-center justify-between gap-2 rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                   <div className="flex items-center gap-2.5">
                     <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white">
@@ -538,12 +540,15 @@ export default function DashboardPage() {
                       <p className="text-[15px] font-extrabold text-slate-900">
                         {data.total_results}{" "}
                         {data.total_results === 1 ? "result" : "results"} found
+                        {isFreePreview ? " — free Instagram search" : ""}
                       </p>
                       <p className="text-[12px] text-slate-500">
                         {data.message || "Deep Internet Analysis completed"}
-                        {typeof data.credits_charged === "number" &&
+                        {!isFreePreview &&
+                          typeof data.credits_charged === "number" &&
                           ` • ${data.credits_charged} credits used`}
-                        {typeof data.current_credits === "number" &&
+                        {!isFreePreview &&
+                          typeof data.current_credits === "number" &&
                           ` • Balance: ${data.current_credits}`}
                       </p>
                     </div>
@@ -573,12 +578,14 @@ export default function DashboardPage() {
                   </p>
                 )}
 
-                <SummaryCard
-                  summary={data.agent_summary ?? null}
-                  regenerating={summaryBusy}
-                  skipped={summarySkipped && !data.agent_summary}
-                  onRegenerate={regenerateSummary}
-                />
+                {!isFreePreview && (
+                  <SummaryCard
+                    summary={data.agent_summary ?? null}
+                    regenerating={summaryBusy}
+                    skipped={summarySkipped && !data.agent_summary}
+                    onRegenerate={regenerateSummary}
+                  />
+                )}
 
                 {data.results.length === 0 ? (
                   <NoResults />

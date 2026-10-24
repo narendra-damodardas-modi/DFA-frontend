@@ -206,14 +206,14 @@ export function reportCost(includeSummary: boolean): number {
 }
 
 /**
- * Free Instagram-only preview (no login required). Always locked=true —
- * every result arrives masked (link "locked", partial titles) so the full
- * Deep Internet Analysis must be unlocked for 20 credits (₹20).
+ * Free Instagram-only search (no login required). Results are fully visible
+ * with `locked:false` — the full multi-website Deep Internet Analysis is the
+ * ₹20 paid upgrade (upsell banner in the dashboard).
  */
 export async function freeSearchFootprint(
   values: SearchFormValues,
   signal?: AbortSignal
-): Promise<LockedReport> {
+): Promise<FootprintResponse> {
   const payload = buildSearchPayload(values);
 
   if (Object.keys(payload).length === 0) {
@@ -255,21 +255,15 @@ export async function freeSearchFootprint(
 
   const data = (await res.json()) as FootprintResponse;
   return {
-    locked: true,
-    message: data.message || "Free Instagram preview.",
-    input: data.input ?? {},
+    ...data,
+    locked: false,
+    results: Array.isArray(data.results) ? data.results : [],
+    agent_summary:
+      typeof data.agent_summary === "string" ? data.agent_summary : null,
     total_results:
       typeof data.total_results === "number"
         ? data.total_results
         : (data.results?.length ?? 0),
-    results: Array.isArray(data.results) ? data.results : [],
-    agent_summary: null,
-    required_credits:
-      typeof data.required_credits === "number"
-        ? data.required_credits
-        : REPORT_COST,
-    current_credits:
-      typeof data.current_credits === "number" ? data.current_credits : 0,
   };
 }
 

@@ -31,8 +31,9 @@ npm run lint   # must pass before commit (eslint)
 
 - Base URL: `https://dfa-9ha3.onrender.com` (override via
   `NEXT_PUBLIC_API_BASE_URL`, see `.env.example`)
-- `POST /free-search` (no auth): free Instagram-only preview from all filled
-  fields. Always `locked:true` — every result masked (partial title, `link:"locked"`).
+- `POST /free-search` (no auth): free Instagram-only search from all filled
+  fields. Results fully visible, `locked:false` — dashboard shows the free
+  results plus an upsell banner (₹20 full report).
 - `POST /deep-internet-analysis` (preferred; `/search` legacy), JSON body —
   **send only filled fields + auth**:
   `{ "query": "<name>", "city": "...", "phone": "...", "username": "...", "email": "...", "include_summary": true }`

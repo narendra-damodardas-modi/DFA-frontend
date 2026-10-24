@@ -11,6 +11,8 @@ interface Props {
   onUnlock: () => void;
   /** Open the buy-credits modal (logged in, not enough credits). */
   onBuy: () => void;
+  /** Upsell after a visible free Instagram search (vs a locked 402 report). */
+  freePreview?: boolean;
 }
 
 export default function PaywallBanner({
@@ -19,6 +21,7 @@ export default function PaywallBanner({
   includeSummary,
   onUnlock,
   onBuy,
+  freePreview = false,
 }: Props) {
   const breakdown = includeSummary ? "(20 report + 10 AI)" : "(20 report)";
 
@@ -34,10 +37,14 @@ export default function PaywallBanner({
         {currentCredits === null ? (
           <div className="min-w-0">
             <h2 className="text-[15.5px] font-extrabold text-slate-900">
-              Free preview — details blurred 🔒
+              {freePreview
+                ? "See everything — unlock the full report 🔍"
+                : "Free preview — details blurred 🔒"}
             </h2>
             <p className="mt-1 text-[13.5px] leading-relaxed text-slate-600">
-              Unlock the full Deep Internet Analysis for{" "}
+              {freePreview
+                ? "The free search shows Instagram only. Unlock the full Deep Internet Analysis — every website — for "
+                : "Unlock the full Deep Internet Analysis for "}
               <span className="font-bold text-slate-900">
                 {requiredCredits} credits (₹{requiredCredits}) {breakdown}
               </span>
@@ -54,10 +61,14 @@ export default function PaywallBanner({
         ) : currentCredits >= requiredCredits ? (
           <div className="min-w-0">
             <h2 className="text-[15.5px] font-extrabold text-slate-900">
-              Ready to unlock the full report 🔒
+              {freePreview
+                ? "See everything — unlock the full report 🔍"
+                : "Ready to unlock the full report 🔒"}
             </h2>
             <p className="mt-1 text-[13.5px] leading-relaxed text-slate-600">
-              The full report costs{" "}
+              {freePreview
+                ? "The full report searches every website — not just Instagram. It costs "
+                : "The full report costs "}
               <span className="font-bold text-slate-900">
                 {requiredCredits} credits (₹{requiredCredits}) {breakdown}
               </span>
