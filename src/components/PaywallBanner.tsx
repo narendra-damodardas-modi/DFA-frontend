@@ -6,7 +6,6 @@ interface Props {
   requiredCredits: number;
   /** null = not logged in (free preview for a guest). */
   currentCredits: number | null;
-  includeSummary: boolean;
   /** Unlock now (or redirect to login when logged out). */
   onUnlock: () => void;
   /** Open the buy-credits modal (logged in, not enough credits). */
@@ -18,13 +17,10 @@ interface Props {
 export default function PaywallBanner({
   requiredCredits,
   currentCredits,
-  includeSummary,
   onUnlock,
   onBuy,
   freePreview = false,
 }: Props) {
-  const breakdown = includeSummary ? "(20 report + 10 AI)" : "(20 report)";
-
   return (
     <div
       role="alert"
@@ -46,7 +42,7 @@ export default function PaywallBanner({
                 ? "The free search shows Instagram only. Unlock the full Deep Internet Analysis — every website — for "
                 : "Unlock the full Deep Internet Analysis for "}
               <span className="font-bold text-slate-900">
-                {requiredCredits} credits (₹{requiredCredits}) {breakdown}
+                {requiredCredits} credits (₹{requiredCredits})
               </span>
               . Log in to continue.
             </p>
@@ -70,7 +66,7 @@ export default function PaywallBanner({
                 ? "The full report searches every website — not just Instagram. It costs "
                 : "The full report costs "}
               <span className="font-bold text-slate-900">
-                {requiredCredits} credits (₹{requiredCredits}) {breakdown}
+                {requiredCredits} credits (₹{requiredCredits})
               </span>
               . You have{" "}
               <span className="font-bold text-slate-900">{currentCredits}</span>.
@@ -91,7 +87,7 @@ export default function PaywallBanner({
             <p className="mt-1 text-[13.5px] leading-relaxed text-slate-600">
               This report costs{" "}
               <span className="font-bold text-slate-900">
-                {requiredCredits} credits {breakdown}
+                {requiredCredits} credits (₹{requiredCredits})
               </span>
               . You have{" "}
               <span className="font-bold text-slate-900">{currentCredits}</span>.

@@ -41,8 +41,9 @@ npm run lint   # must pass before commit (eslint)
 - Success response adds `locked:false, credits_charged, current_credits, required_credits`.
   HTTP 402 = paywall (`detail = {locked:true, message, input, total_results, results (first 2 visible, rest masked + link:"locked"), agent_summary:null, required_credits, current_credits}`).
   HTTP 401 = redirect to `/login`.
-- Credits (1 credit = ₹1): signup bonus 0 (no free credits) · report 20 ·
-  AI mode +10 (search w/ summary 30) · re-summarize 10.
+- Credits (1 credit = ₹1): signup bonus 20 · full report 20 (flat — the AI
+  summary feature is removed; no `/summarize` endpoint, no `include_summary`
+  field).
   Funnel: dashboard works logged-out — form submit runs the FREE Instagram
   preview (`freeSearchFootprint`), then "Unlock full report (₹20)" runs the
   paid search. Guests clicking unlock get `dfa_pending_unlock`
@@ -70,7 +71,6 @@ src/
     States.tsx      # LoadingState (free/full variants), LoadingSkeleton, EmptyState, NoResults, ErrorState
     BuyCreditsModal.tsx  # Razorpay Standard Checkout modal (input 1–100000, default 20)
     PaywallBanner.tsx    # 3 states: guest login CTA / unlock now / buy credits
-    SummaryCard.tsx   # AI summary render
   lib/
     api.ts  # types, buildSearchPayload, freeSearchFootprint (free preview), searchFootprint, validateForm, platformStyle, shortHost, PaywallError/UnauthorizedError, REPORT_COST/AI_COST
     auth.ts  # AuthUser (incl. credits), token storage, signup/login/me

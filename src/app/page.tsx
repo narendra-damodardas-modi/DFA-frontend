@@ -90,7 +90,7 @@ export default function LandingPage() {
               Digital Footprint Finder
             </p>
             <p className="text-[12px] font-medium text-slate-500">
-              Made for India 🇮🇳 • Free Instagram search
+              Made for India 🇮🇳 • Free search • 20 credits on signup
             </p>
           </div>
           {loggedIn ? (

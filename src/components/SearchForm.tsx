@@ -11,8 +11,6 @@ interface Props {
   onClear: () => void;
   loading: boolean;
   formError: string | null;
-  includeSummary: boolean;
-  onToggleSummary: (v: boolean) => void;
 }
 
 function Field({
@@ -65,8 +63,6 @@ export default function SearchForm({
   onClear,
   loading,
   formError,
-  includeSummary,
-  onToggleSummary,
 }: Props) {
   return (
     <section
@@ -214,30 +210,9 @@ export default function SearchForm({
           </p>
         )}
 
-        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 px-4 py-3.5">
-          <input
-            type="checkbox"
-            checked={includeSummary}
-            disabled={loading}
-            onChange={(e) => onToggleSummary(e.target.checked)}
-            className="mt-0.5 h-5 w-5 shrink-0 accent-indigo-600"
-          />
-          <span>
-            <span className="block text-[14px] font-bold text-slate-800">
-              ✨ AI mode (+10 credits)
-            </span>
-            <span className="block text-[12.5px] leading-snug text-slate-500">
-              {includeSummary
-                ? "On — easy words + safety tips. Takes a few seconds longer."
-                : "Off — fast search, no summary. You can make one later."}
-            </span>
-            <span className="mt-1 block text-[12.5px] font-bold text-indigo-700">
-              {includeSummary
-                ? "Unlock cost: 30 credits (₹30) with AI"
-                : "Unlock cost: 20 credits (₹20)"}
-            </span>
-          </span>
-        </label>
+        <p className="text-center text-[12.5px] font-bold text-indigo-700">
+          Unlock cost: 20 credits (₹20) — full report on every website
+        </p>
 
         <button
           type="submit"

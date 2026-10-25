@@ -19,7 +19,6 @@ export interface FootprintResponse {
   input: Record<string, string>;
   total_results: number;
   results: PlatformResult[];
-  agent_summary: string | null;
   message: string;
   locked?: boolean;
   credits_charged?: number | null;
@@ -34,7 +33,6 @@ export interface LockedReport {
   input: Record<string, string>;
   total_results: number;
   results: PlatformResult[];
-  agent_summary: null;
   required_credits: number;
   current_credits: number;
 }
@@ -56,11 +54,6 @@ export class UnauthorizedError extends Error {
     super(message);
     this.name = "UnauthorizedError";
   }
-}
-
-export interface SummarizeResponse {
-  success: boolean;
-  agent_summary: string | null;
 }
 
 const API_BASE =
@@ -97,13 +90,11 @@ function getAuthHeader(): Record<string, string> {
 
 export async function searchFootprint(
   values: SearchFormValues,
-  signal?: AbortSignal,
-  includeSummary: boolean = true
+  signal?: AbortSignal
 ): Promise<FootprintResponse> {
-  const payload: Record<string, string | boolean> = buildSearchPayload(values);
-  payload.include_summary = includeSummary;
+  const payload: Record<string, string> = buildSearchPayload(values);
 
-  if (Object.keys(payload).length <= 1) {
+  if (Object.keys(payload).length === 0) {
     throw new Error("Please fill at least one box to start search.");
   }
 
@@ -156,13 +147,10 @@ export async function searchFootprint(
         results: Array.isArray(raw?.results)
           ? (raw.results as PlatformResult[])
           : [],
-        agent_summary: null,
         required_credits:
           typeof raw?.required_credits === "number"
             ? raw.required_credits
-            : includeSummary
-              ? 30
-              : 20,
+            : REPORT_COST,
         current_credits:
           typeof raw?.current_credits === "number" ? raw.current_credits : 0,
       };
@@ -187,8 +175,6 @@ export async function searchFootprint(
     ...data,
     locked: false,
     results: Array.isArray(data.results) ? data.results : [],
-    agent_summary:
-      typeof data.agent_summary === "string" ? data.agent_summary : null,
     total_results:
       typeof data.total_results === "number"
         ? data.total_results
@@ -196,14 +182,8 @@ export async function searchFootprint(
   };
 }
 
-/** Pricing: 1 credit = ₹1. Report 20, AI mode +10, standalone re-summarize 10. */
+/** Pricing: 1 credit = ₹1. Full report costs 20 credits. */
 export const REPORT_COST = 20;
-export const AI_COST = 10;
-export const RESUMMARIZE_COST = 10;
-
-export function reportCost(includeSummary: boolean): number {
-  return REPORT_COST + (includeSummary ? AI_COST : 0);
-}
 
 /**
  * Free Instagram-only search (no login required). Results are fully visible
@@ -258,71 +238,11 @@ export async function freeSearchFootprint(
     ...data,
     locked: false,
     results: Array.isArray(data.results) ? data.results : [],
-    agent_summary:
-      typeof data.agent_summary === "string" ? data.agent_summary : null,
     total_results:
       typeof data.total_results === "number"
         ? data.total_results
         : (data.results?.length ?? 0),
   };
-}
-
-/**
- * Re-generate the AI summary without re-running the search.
- * POST /summarize { input, results } → { success, agent_summary }
- * Standalone re-summarize costs 10 credits (backend-enforced).
- */
-export async function summarizeFootprint(
-  input: Record<string, string>,
-  results: PlatformResult[],
-  signal?: AbortSignal
-): Promise<string | null> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}/summarize`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeader() },
-      body: JSON.stringify({ input, results }),
-      signal,
-    });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
-    throw new Error(
-      "Could not connect to server. It may be waking up — please wait 30 seconds and try again."
-    );
-  }
-
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const data = await res.json();
-      detail = data?.detail || data?.message || "";
-    } catch {
-      /* ignore */
-    }
-    if (res.status === 401) {
-      throw new UnauthorizedError(
-        detail || "Please log in again to make a summary."
-      );
-    }
-    if (res.status === 402) {
-      throw new Error(
-        detail ||
-          "Not enough credits for a summary (10 credits). Buy credits to continue."
-      );
-    }
-    if (res.status === 502) {
-      throw new Error(
-        "Summary helper is resting right now. Please try again in a minute."
-      );
-    }
-    throw new Error(
-      detail || `Server error (${res.status}). Please try again in a minute.`
-    );
-  }
-
-  const data = (await res.json()) as SummarizeResponse;
-  return typeof data.agent_summary === "string" ? data.agent_summary : null;
 }
 
 export function validateForm(values: SearchFormValues): string | null {

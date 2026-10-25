@@ -126,7 +126,7 @@ export default function SignupPage() {
             </h1>
             <p className="mt-1 text-[14px] text-slate-500">
               {step === "details"
-                ? "Unlock full reports from ₹20. Email verification required."
+                ? "Get 20 free credits — one full search free. Email verification required."
                 : `Code sent to ${email.trim()}. Enter it below.`}
             </p>
           </div>

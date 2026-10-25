@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import SearchForm from "@/components/SearchForm";
 import ResultCard from "@/components/ResultCard";
-import SummaryCard from "@/components/SummaryCard";
 import PaywallBanner from "@/components/PaywallBanner";
 import BuyCreditsModal from "@/components/BuyCreditsModal";
 import {
@@ -29,10 +28,9 @@ import {
 import {
   PaywallError,
   UnauthorizedError,
+  REPORT_COST,
   freeSearchFootprint,
-  reportCost,
   searchFootprint,
-  summarizeFootprint,
   validateForm,
   type FootprintResponse,
   type LockedReport,
@@ -70,15 +68,11 @@ type AuthStatus = "checking" | "ok";
 
 function readPendingUnlock(): {
   values: SearchFormValues;
-  includeSummary: boolean;
 } | null {
   try {
     const raw = sessionStorage.getItem(PENDING_UNLOCK_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as {
-      values: SearchFormValues;
-      includeSummary: boolean;
-    };
+    const parsed = JSON.parse(raw) as { values: SearchFormValues };
     if (parsed && parsed.values) return parsed;
   } catch {
     /* ignore */
@@ -108,10 +102,6 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [platformFilter, setPlatformFilter] = useState<string>("All");
-  const [includeSummary, setIncludeSummary] = useState(true);
-  const [summarySkipped, setSummarySkipped] = useState(false);
-  const [summaryBusy, setSummaryBusy] = useState(false);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [buyOpen, setBuyOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -140,7 +130,7 @@ export default function DashboardPage() {
     try {
       sessionStorage.setItem(
         PENDING_UNLOCK_KEY,
-        JSON.stringify({ values: v, includeSummary })
+        JSON.stringify({ values: v })
       );
     } catch {
       /* ignore */
@@ -158,7 +148,6 @@ export default function DashboardPage() {
     }
     setFormError(null);
     setError(null);
-    setSummaryError(null);
     setLocked(null);
     setData(null);
     setStatus("loading");
@@ -187,12 +176,8 @@ export default function DashboardPage() {
     }
   };
 
-  const runPaidSearch = async (
-    v: SearchFormValues,
-    withSummary = includeSummary
-  ) => {
+  const runPaidSearch = async (v: SearchFormValues) => {
     setError(null);
-    setSummaryError(null);
     setLocked(null);
     setData(null);
     setStatus("loading");
@@ -206,11 +191,10 @@ export default function DashboardPage() {
     );
 
     try {
-      const res = await searchFootprint(v, ctrl.signal, withSummary);
+      const res = await searchFootprint(v, ctrl.signal);
       setData(res);
       setLocked(null);
       setIsFreePreview(false);
-      setSummarySkipped(!withSummary);
       setPlatformFilter("All");
       // Update wallet from the success payload; fall back to a refresh.
       if (typeof res.current_credits === "number") {
@@ -264,13 +248,12 @@ export default function DashboardPage() {
         const pending = readPendingUnlock();
         if (pending) {
           setValues(pending.values);
-          setIncludeSummary(pending.includeSummary);
           try {
             sessionStorage.removeItem(PENDING_UNLOCK_KEY);
           } catch {
             /* ignore */
           }
-          void runPaidSearch(pending.values, pending.includeSummary);
+          void runPaidSearch(pending.values);
         }
       })
       .catch(() => {
@@ -292,32 +275,6 @@ export default function DashboardPage() {
       return;
     }
     void runPaidSearch(values);
-  };
-
-  const regenerateSummary = async () => {
-    if (!data || summaryBusy) return;
-    setSummaryBusy(true);
-    setSummaryError(null);
-    try {
-      const summary = await summarizeFootprint(data.input, data.results);
-      setData((d) => (d ? { ...d, agent_summary: summary } : d));
-      setSummarySkipped(false);
-      if (summary === null) {
-        setSummaryError("Still no summary. Please try again in a minute.");
-      }
-      void refreshBalance();
-    } catch (e) {
-      if (e instanceof UnauthorizedError) {
-        clearAuth();
-        router.replace("/login");
-        return;
-      }
-      setSummaryError(
-        e instanceof Error ? e.message : "Could not make summary. Please try again."
-      );
-    } finally {
-      setSummaryBusy(false);
-    }
   };
 
   const report = data ?? locked;
@@ -429,8 +386,8 @@ export default function DashboardPage() {
             <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-slate-600">
               Type a name, phone number, or username below. We&apos;ll show a{" "}
               <span className="font-semibold text-slate-800">free Instagram
-              preview</span> first — unlock the full report anytime for ₹
-              {reportCost(includeSummary)}.
+              search</span> first — unlock the full report anytime for ₹
+              {REPORT_COST}.
             </p>
           </div>
 
@@ -447,8 +404,6 @@ export default function DashboardPage() {
               }}
               loading={status === "loading"}
               formError={formError}
-              includeSummary={includeSummary}
-              onToggleSummary={setIncludeSummary}
             />
           </div>
 
@@ -477,7 +432,6 @@ export default function DashboardPage() {
                 <PaywallBanner
                   requiredCredits={locked.required_credits}
                   currentCredits={locked.current_credits}
-                  includeSummary={includeSummary}
                   onUnlock={unlockFull}
                   onBuy={() => setBuyOpen(true)}
                 />
@@ -523,9 +477,8 @@ export default function DashboardPage() {
               <section aria-live="polite">
                 {isFreePreview && (
                   <PaywallBanner
-                    requiredCredits={reportCost(includeSummary)}
+                    requiredCredits={REPORT_COST}
                     currentCredits={credits}
-                    includeSummary={includeSummary}
                     onUnlock={unlockFull}
                     onBuy={() => setBuyOpen(true)}
                     freePreview
@@ -559,8 +512,6 @@ export default function DashboardPage() {
                       setData(null);
                       setStatus("idle");
                       setPlatformFilter("All");
-                      setSummaryError(null);
-                      setSummarySkipped(false);
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-[12.5px] font-bold text-slate-600 transition hover:bg-slate-50"
@@ -568,24 +519,6 @@ export default function DashboardPage() {
                     <RotateCcw size={13} /> New search
                   </button>
                 </div>
-
-                {summaryError && (
-                  <p
-                    role="alert"
-                    className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] font-medium leading-snug text-amber-800"
-                  >
-                    {summaryError}
-                  </p>
-                )}
-
-                {!isFreePreview && (
-                  <SummaryCard
-                    summary={data.agent_summary ?? null}
-                    regenerating={summaryBusy}
-                    skipped={summarySkipped && !data.agent_summary}
-                    onRegenerate={regenerateSummary}
-                  />
-                )}
 
                 {data.results.length === 0 ? (
                   <NoResults />
